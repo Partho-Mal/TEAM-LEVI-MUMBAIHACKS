@@ -4,6 +4,22 @@ AURAChain is a production-grade platform designed to democratize advanced busine
 
 ---
 
+## 🔗 Live Demo (Vercel)
+
+Experience the live platform here:  
+👉 **https://aurachainai.vercel.app/**
+
+---
+
+## 📂 Demo Dataset
+
+To quickly test the platform, use the sample dataset:
+
+👉 **[Download synthetic_supply_chain_data.csv](./demo/synthetic_supply_chain_data.csv)**  
+(Upload this file in the chat interface to see full analysis.)
+
+---
+
 ## System Architecture
 
 The platform is built on a "Hub and Spoke" model where a central AI Orchestrator manages specialized agents within a secure environment.
