@@ -1,8 +1,8 @@
-// aurachain-ui/src/App.tsx
+// aurachain-ui/src/Dashboard.tsx
 import MainLayout from './layout/MainLayout';
 import ChatInterface from './components/Chat/ChatInterface';
 
-function App() {
+function Dashboard() {
   return (
     <MainLayout>
       <ChatInterface />
@@ -10,4 +10,4 @@ function App() {
   );
 }
 
-export default App;
+export default Dashboard;

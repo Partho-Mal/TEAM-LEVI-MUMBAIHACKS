@@ -59,7 +59,8 @@ const ChatInterface: React.FC = () => {
   const leftOffset = isSidebarOpen ? 280 : 72; // Match sidebar widths
   
   // Calculate dynamic right offset based on right panel
-  const rightOffset = isRightPanelOpen ? rightPanelWidth : 0;
+  /* eslint-disable no-unused-vars */
+  const rightOffset = isRightPanelOpen ? rightPanelWidth : 0; 
 
   // --- ZERO STATE (Greeting) ---
   if (messages.length === 0) {

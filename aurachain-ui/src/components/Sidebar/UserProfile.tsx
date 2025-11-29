@@ -5,19 +5,37 @@ import {
   Globe, HelpCircle, ArrowUpCircle, Download, Info 
 } from 'lucide-react';
 
-// --- HELPER COMPONENTS (Defined OUTSIDE the main component) ---
+// --- HELPER COMPONENTS ---
 
 interface MenuItemProps {
   icon: React.ElementType;
   label: string;
   shortcut?: string;
   hasSubmenu?: boolean;
+  onClick?: () => void;
+  className?: string; 
 }
 
-const MenuItem: React.FC<MenuItemProps> = ({ icon: Icon, label, shortcut, hasSubmenu = false }) => (
-  <button className="w-full flex items-center justify-between px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors">
+const MenuItem: React.FC<MenuItemProps> = ({ icon: Icon, label, shortcut, hasSubmenu = false, onClick, className }) => (
+  <button 
+    onClick={onClick}
+    className={clsx(
+      "w-full flex items-center justify-between px-3 py-2 text-sm rounded-md transition-colors",
+      // Default styling (gray/slate) if no custom class is provided
+      !className && "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700",
+      // Custom styling (e.g., red for logout)
+      className
+    )}
+  >
     <div className="flex items-center gap-3">
-      <Icon size={16} className="text-slate-500 dark:text-slate-400" />
+      <Icon 
+        size={16} 
+        className={clsx(
+          // If no custom class, force slate color.
+          // If custom class exists (like text-red-600), remove this so icon inherits the red color naturally via currentColor.
+          !className && "text-slate-500 dark:text-slate-400"
+        )}
+      />
       <span>{label}</span>
     </div>
     {shortcut && <span className="text-xs text-slate-400">{shortcut}</span>}
@@ -37,18 +55,21 @@ const UserProfile: React.FC<UserProfileProps> = ({ isOpen }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const toggleMenu = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent sidebar toggle conflict if any
+    e.stopPropagation(); 
     setIsMenuOpen(!isMenuOpen);
+  };
+
+  const handleLogout = () => {
+    window.location.href = '/';
   };
 
   return (
     <div className="relative border-t border-light-border dark:border-dark-border p-3 bg-light-surface dark:bg-dark-surface">
       
-      {/* --- DROPDOWN MENU (Floating above) --- */}
+      {/* --- DROPDOWN MENU --- */}
       {isMenuOpen && isOpen && (
         <div className="absolute bottom-full left-3 right-3 mb-2 bg-white dark:bg-[#212121] border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-1.5 z-50 animate-fade-in-up origin-bottom">
           
-          {/* Email Header */}
           <div className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-700 mb-1">
             ansarimoin7861@gmail.com
           </div>
@@ -65,7 +86,13 @@ const UserProfile: React.FC<UserProfileProps> = ({ isOpen }) => {
           
           <Separator />
           
-          <MenuItem icon={LogOut} label="Log out" />
+          <MenuItem 
+            icon={LogOut} 
+            label="Log out" 
+            onClick={handleLogout}
+            // RED COLOR STYLING HERE
+            className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+          />
         </div>
       )}
 
@@ -77,13 +104,10 @@ const UserProfile: React.FC<UserProfileProps> = ({ isOpen }) => {
           !isOpen && "justify-center"
         )}
       >
-        {/* Avatar Placeholder */}
         <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-primary-400 to-primary-600 flex items-center justify-center text-white shadow-sm ring-2 ring-white dark:ring-slate-700 shrink-0">
-          {/* User Initials or Icon */}
           <span className="font-semibold text-xs">M</span> 
         </div>
 
-        {/* User Details (Visible only when Sidebar Open) */}
         {isOpen && (
           <div className="ml-3 flex-1 text-left overflow-hidden">
             <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">
@@ -95,7 +119,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ isOpen }) => {
           </div>
         )}
 
-        {/* Chevron Icon (Rotates when menu open) */}
         {isOpen && (
             <ChevronUp 
                 size={16} 

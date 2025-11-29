@@ -1,9 +1,15 @@
 import React from 'react';
 import { clsx } from 'clsx';
-import { Infinity as InfinityIcon, Database, PanelLeft, Plus } from 'lucide-react'; // Added Plus icon
+import { 
+  Infinity as InfinityIcon, 
+  Database, 
+  PanelLeft,      // Icon to show when closed (to open)
+  PanelLeftClose, // Icon to show when open (to close)
+  Plus 
+} from 'lucide-react';
 import SessionList from './SessionList';
 import UserProfile from './UserProfile';
-import { useUIStore } from '../../store/uiStore'; // Import store for resetSession
+import { useUIStore } from '../../store/uiStore';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -11,7 +17,7 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
-  const { resetSession } = useUIStore(); // Get reset action
+  const { resetSession } = useUIStore();
 
   return (
     <aside 
@@ -20,37 +26,44 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
         isOpen ? "w-[280px]" : "w-[72px]"
       )}
     >
-      {/* 1. Top Section: Brand */}
+      {/* 1. Top Section */}
       <div className={clsx(
         "h-16 flex items-center transition-all duration-300",
-        isOpen ? "justify-start px-3 gap-3" : "justify-center px-2"
+        // justify-between spreads them apart when open. 
+        // justify-center centers the single button when closed.
+        isOpen ? "justify-between px-3" : "justify-center px-2"
       )}>
         
-        {/* Interactive Logo/Toggle Area - Fixed Width 48px (w-12) */}
-        <button 
-          onClick={onToggle}
-          className="group relative flex items-center justify-center focus:outline-none w-12 h-12 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex-shrink-0"
-          title={isOpen ? "Close sidebar" : "Open sidebar"}
-        >
-          <div className="relative w-8 h-8 flex items-center justify-center">
-            <div className="absolute inset-0 flex items-center justify-center transition-all duration-200 opacity-100 scale-100 group-hover:opacity-0 group-hover:scale-90">
+        {/* LOGO SECTION - Only visible when OPEN */}
+        {isOpen && (
+          <div className="flex items-center gap-3 overflow-hidden fade-in duration-300">
+             {/* Logo Icon */}
+             <div className="relative w-8 h-8 flex items-center justify-center flex-shrink-0">
                <InfinityIcon size={32} strokeWidth={2.5} className="text-primary-500" />
-            </div>
-            <div className="absolute inset-0 flex items-center justify-center transition-all duration-200 opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100">
-               <PanelLeft size={24} className="text-slate-500 dark:text-slate-400" />
-            </div>
+             </div>
+             {/* Text */}
+             <h1 className="font-heading font-bold text-2xl tracking-tight text-primary-500 whitespace-nowrap">
+               AURAChain
+             </h1>
           </div>
+        )}
+
+        {/* TOGGLE BUTTON - Changes icon and style based on state */}
+        <button
+          onClick={onToggle}
+          className={clsx(
+            "rounded-lg transition-colors flex-shrink-0 flex items-center justify-center",
+            "hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200",
+            // Style Logic:
+            // Closed: Large square (w-12 h-12) to match other sidebar icons.
+            // Open: Smaller button (p-2) on the right side.
+            isOpen ? "p-2 text-slate-400" : "w-12 h-12 text-slate-500"
+          )}
+          title={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
+        >
+          {isOpen ? <PanelLeftClose size={20} /> : <PanelLeft size={24} />}
         </button>
-        
-        {/* Name */}
-        <div className={clsx(
-          "fade-in whitespace-nowrap overflow-hidden transition-all duration-300",
-          isOpen ? "w-auto opacity-100 translate-x-0" : "w-0 opacity-0 -translate-x-4"
-        )}>
-          <h1 className="font-heading font-bold text-2xl tracking-tight text-primary-500">
-            AURAChain
-          </h1>
-        </div>
+
       </div>
 
       {/* 2. Data Connectivity Status */}
@@ -58,12 +71,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
         "flex items-center transition-all duration-300 py-3",
         isOpen ? "px-3 gap-3" : "justify-center px-3"
       )}>
-        {/* Icon - Fixed Width */}
         <div className="flex-shrink-0 flex items-center justify-center w-12 h-12 text-slate-500 dark:text-slate-400">
            <Database size={24} strokeWidth={1.5} />
         </div>
 
-        {/* Content */}
         <div className={clsx(
           "flex-1 flex items-center justify-between overflow-hidden transition-all duration-300",
           isOpen ? "w-auto opacity-100" : "w-0 opacity-0"
@@ -78,7 +89,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
         </div>
       </div>
 
-      {/* 3. NEW SESSION BUTTON (Added here) */}
+      {/* 3. NEW SESSION BUTTON */}
       <div className={clsx(
         "py-2 transition-all duration-300",
         isOpen ? "px-3" : "px-2 flex justify-center"
@@ -87,7 +98,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
           onClick={resetSession}
           className={clsx(
             "flex items-center justify-center transition-all duration-200 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 hover:border-primary-400 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 group",
-            // Size logic: w-full when open, w-12 (48px) when collapsed to match other icons
             isOpen ? "w-full py-2.5" : "w-12 h-12" 
           )}
           title="Start New Session"

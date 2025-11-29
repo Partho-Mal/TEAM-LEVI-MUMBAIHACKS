@@ -40,9 +40,10 @@ const InputPanel: React.FC<InputPanelProps> = ({ isLoading, isZeroState = false 
         
         {/* Input Box (Visuals) */}
         <div className={clsx(
-          "relative flex items-end bg-white dark:bg-[#212121] border border-slate-200 dark:border-slate-700 focus-within:ring-2 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/30 transition-all",
+          // Changed items-end to items-center
+          "relative flex items-center bg-white dark:bg-[#212121] border border-slate-200 dark:border-slate-700 focus-within:ring-2 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/30 transition-all",
           "rounded-2xl p-2",
-          "shadow-xl" // ADDED: shadow-xl here so it follows the rounded corners
+          "shadow-xl"
         )}>
           
           {/* Attachment (Left) */}
