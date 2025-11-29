@@ -3,22 +3,23 @@ import { clsx } from 'clsx';
 import { BrainCircuit, Clock, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useUIStore } from '../../store/uiStore';
 
-// 👇 CRITICAL: Ensure 'export' is here
+// 👇 UPDATED INTERFACE
 export interface Message {
   id: string;
   sender: 'user' | 'ai';
   text: string;
   timestamp: string;
-  type: 'text' | 'analysis' | 'agent_result'; // Added agent_result to type definition
+  type: 'text' | 'analysis' | 'agent_result'; 
   status?: 'processing' | 'completed' | 'failed';
   metadata?: {
     agents?: string[];
     progress?: number;
     data?: any;
-    agent?: string; // Added agent name field
+    agent?: string; 
     summary?: string;
-    success?: boolean; // Added success field
-    error?: string; // Added error field
+    success?: boolean; 
+    error?: string; 
+    displayText?: string; // <--- ADDED THIS PROPERTY
   };
 }
 
@@ -31,44 +32,35 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   const isUser = message.sender === 'user';
   const { setSelectedAgent, setRightPanelOpen } = useUIStore();
 
-  // --- ARTIFACT CARD RENDERER (For Plans & Results) ---
-  // We treat 'agent_result' and 'analysis' similarly for the card view
+  // --- ARTIFACT CARD RENDERER ---
   if (message.type === 'analysis' || message.type === 'agent_result') {
-    
-    // Determine if this is a high-level PLAN or a specific RESULT based on metadata
     const isPlan = !!message.metadata?.agents; 
     const isResult = !!message.metadata?.data;
 
     return (
       <div className="mb-8 max-w-[85%] animate-fade-in-up">
-        {/* Label above the card */}
         <div className="flex items-center text-xs font-bold text-slate-500 mb-2 ml-1 uppercase tracking-wider">
           <BrainCircuit size={14} className="mr-2" />
           {isPlan ? "Orchestrator Plan" : message.metadata?.agent || "Agent Artifact"}
         </div>
         
-        {/* The Card Itself */}
         <div 
           onClick={() => {
              if (isResult) {
-                 // 1. Open specific agent detail view
                  setSelectedAgent(message.metadata?.agent || null); 
                  setRightPanelOpen(true);
              } else if (isPlan) {
-                 // 2. Open workflow overview
                  setSelectedAgent(null); 
                  setRightPanelOpen(true);
              }
           }}
           className={clsx(
             "group relative bg-white dark:bg-[#212121] border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm transition-all overflow-hidden",
-            // Add hover effects only if it's clickable (Plan or Result)
             (isResult || isPlan) 
               ? "hover:shadow-md hover:border-primary-300 dark:hover:border-primary-700 cursor-pointer" 
               : ""
           )}
         >
-          {/* Status Bar Indicator (Left Border) */}
           <div className={clsx(
             "absolute left-0 top-0 bottom-0 w-1 transition-colors",
             message.status === 'processing' ? "bg-accent-amber" : 
@@ -78,11 +70,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
           <div className="p-5 pl-6">
             <div className="flex justify-between items-start mb-3">
               <div>
-                {/* Title */}
                 <h4 className="font-heading font-semibold text-lg text-slate-800 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
                   {message.text}
                 </h4>
-                {/* Subtitle / Summary */}
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                   {isPlan 
                     ? "Executing agent workflow..." 
@@ -91,7 +81,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
                 </p>
               </div>
               
-              {/* Icon: Spinner if processing, Arrow if result, Check if done */}
               <div className={clsx(
                 "p-1.5 rounded-lg transition-colors",
                 message.status === 'processing' 
@@ -103,13 +92,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
                 {message.status === 'processing' ? (
                     <Clock size={18} className="animate-spin" />
                 ) : (
-                    // Show Arrow for clickable results, Check for completed plans
                     isResult ? <ArrowRight size={18} /> : <CheckCircle2 size={18} />
                 )}
               </div>
             </div>
             
-            {/* Progress Bar (Visible if Processing OR it is a Plan card) */}
             {(message.status === 'processing' || isPlan) && (
                 <div className="space-y-3">
                     <div className="flex items-center justify-between text-xs font-medium">
@@ -131,7 +118,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
                         </div>
                     </div>
 
-                    {/* Agent Tags (Only visible on the Plan Card) */}
                     {isPlan && message.metadata?.agents && (
                         <div className="pt-3 mt-1 border-t border-slate-100 dark:border-slate-700 flex flex-wrap gap-2">
                             {message.metadata.agents.map((agent, idx) => (
@@ -168,7 +154,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
             ? "bg-primary-600 text-white rounded-2xl rounded-tr-sm" 
             : "bg-white dark:bg-[#212121] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl rounded-tl-sm"
         )}>
-          {message.text}
+          {/* Support custom display text via metadata (e.g. for system messages) */}
+          {message.metadata?.displayText || message.text}
         </div>
         
         <span className={clsx("text-[10px] text-slate-400 mt-1.5", isUser ? "mr-1" : "ml-1")}>

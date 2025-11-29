@@ -1,3 +1,5 @@
+# app/agents/orchestrator.py
+
 from typing import Dict, List, Any, Optional
 from app.agents.base_agent import BaseAgent, AgentRequest, AgentResponse
 from app.core.api_clients import google_client
@@ -10,17 +12,17 @@ settings = get_settings()
 class OrchestratorAgent(BaseAgent):
     """
     Central orchestrator that interprets queries and routes to appropriate agents.
-    Uses Claude Sonnet 4.5 for superior reasoning.
+    Uses Mode Detection to prevent unnecessary agent firing.
     """
     
     AGENT_CAPABILITIES = {
-        "data_harvester": "Ingests, cleans, and preprocesses any tabular data. Handles CSV, Excel, JSON.",
-        "visualizer": "Creates charts, graphs, and visual representations of data.",
-        "trend_analyst": "Identifies patterns, trends, and anomalies in time series data.",
-        "forecaster": "Predicts future values using statistical and ML models.",
-        "mcts_optimizer": "Optimizes complex decisions using Monte Carlo Tree Search.",
-        "order_manager": "Manages order processing, inventory, and fulfillment workflows.",
-        "notifier": "Sends notifications via email, SMS, or webhooks."
+        "data_harvester": "Ingests, cleans, and preprocesses data. Runs for new uploads OR when Deep Dive/Optimization requires guaranteed data quality.",
+        "visualizer": "Creates charts and graphs.",
+        "trend_analyst": "Identifies trends. Uses internal data (Deep Dive) or Google Trends (Cold Start).",
+        "forecaster": "Predicts future values.",
+        "mcts_optimizer": "Optimizes inventory/decisions. Requires internal data.",
+        "order_manager": "Drafts orders. Used ONLY when user explicitly wants to buy/order.",
+        "notifier": "Sends alerts. Used ONLY after an order is created."
     }
     
     def __init__(self):
@@ -31,133 +33,133 @@ class OrchestratorAgent(BaseAgent):
         )
     
     def get_system_prompt(self) -> str:
-        """System prompt for orchestrator"""
+        """System prompt with mode-aware routing rules"""
         capabilities = "\n".join([
             f"- {name}: {desc}"
             for name, desc in self.AGENT_CAPABILITIES.items()
         ])
         
-        return f"""You are the Orchestrator Agent for an MSME intelligence platform.
+        return f"""You are the Orchestrator Agent for an MSME supply chain platform.
 
-Your role is to:
-1. Understand user queries about business data analysis
-2. Determine which specialized agent(s) should handle the request
-3. Create execution plan with correct agent sequence
-4. Extract parameters for each agent
+Your role:
+1. Detect the OPERATIONAL MODE (Cold Start, Deep Dive, or Ad-Hoc).
+2. Create an execution plan.
+3. STRICTLY follow agent constraints.
 
 Available agents:
 {capabilities}
 
-IMPORTANT: When creating execution plans:
-- data_harvester has NO dependencies (can run first)
-- trend_analyst depends on data_harvester
-- forecaster depends on trend_analyst
-- visualizer can depend on ANY agent that produces data
-- mcts_optimizer depends on forecaster
+### OPERATIONAL MODES:
 
-Respond in JSON format:
+**MODE 1: COLD START** (No 'dataset_id' in context)
+- User asks generic market questions (e.g., "Sneaker trends").
+- ALLOWED: trend_analyst (for external data), visualizer.
+- BANNED: data_harvester, mcts_optimizer, forecaster (requires history), order_manager, notifier.
+
+**MODE 2: DEEP DIVE** ('dataset_id' present + analysis/optimization request)
+- User wants full optimization, forecasting, or deep analysis on their data.
+- PIPELINE: data_harvester -> trend_analyst -> forecaster -> mcts_optimizer.
+- **CRITICAL**: You MUST run `data_harvester` first to ensure data is clean, even if the file is already uploaded.
+- Optional: order_manager (only if asked), notifier (only if order created).
+
+**MODE 3: AD-HOC QUERY** ('dataset_id' present + specific simple question)
+- User asks specific Q (e.g., "Show sales for March").
+- ACTION: Call ONLY the relevant agent (e.g., visualizer OR trend_analyst).
+- BANNED: Full pipeline, notifier.
+
+### CRITICAL RULES:
+1. **Notifier**: NEVER call unless `order_manager` is also called.
+2. **Data Harvester Strategy**: 
+   - IF Mode is "Deep Dive" or "Optimization": ALWAYS include `data_harvester` as the first step.
+   - IF Mode is "Ad-Hoc": Skip `data_harvester` (assume data is already clean enough).
+3. **Dependency Check**: NEVER list an agent in "depends_on" if that agent is not in your "agents" list.
+   - If `data_harvester` is skipped, the first agent (e.g., `trend_analyst`) must have `depends_on: []`.
+
+Respond in JSON:
 {{
-    "reasoning": "explanation of your analysis",
-    "agents": ["agent1", "agent2"],
+    "mode": "cold_start | deep_dive | ad_hoc",
+    "reasoning": "Why you chose this mode and agents",
+    "agents": ["list", "of", "agent_names"],
     "execution_plan": [
         {{
             "agent": "agent_name",
-            "task": "specific task",
+            "task": "Specific instruction for this agent",
             "parameters": {{}},
-            "depends_on": []
+            "depends_on": ["previous_agent_name"]
         }}
-    ],
-    "requires_data": true/false
+    ]
 }}
-
-Examples:
-- "Show me sales trends" → data_harvester (depends_on: []), trend_analyst (depends_on: ["data_harvester"])
-- "Predict next quarter sales" → data_harvester, trend_analyst, forecaster
-- "Optimize inventory levels" → data_harvester, trend_analyst, forecaster, mcts_optimizer
 """
-    
+
+    def _detect_mode(self, request: AgentRequest) -> str:
+        """Programmatically detect the mode to enforce guardrails"""
+        has_dataset = "dataset_id" in request.context or "dataset" in request.context
+        query = request.query.lower()
+        
+        # Keywords
+        order_keywords = ["order", "buy", "purchase", "procure"]
+        deep_keywords = ["optimize", "full analysis", "deep dive", "strategy", "forecast", "predict", "bullwhip", "inventory"]
+        
+        # 1. Cold Start: No data available
+        if not has_dataset:
+            return "cold_start"
+            
+        # 2. Deep Dive: Explicit complex request
+        if any(k in query for k in deep_keywords) or any(k in query for k in order_keywords):
+            return "deep_dive"
+            
+        # 3. Ad-Hoc: Default for specific questions on existing data
+        return "ad_hoc"
+
     async def process(self, request: AgentRequest) -> AgentResponse:
         try:
-            # Skip orchestration for SESSION_INIT
-            if request.query == "SESSION_INIT":
-                return AgentResponse(
-                    agent_name=self.name,
-                    success=True,
-                    data={
-                        "plan": {
-                            "reasoning": "Session initialization - no agents needed",
-                            "agents": [],
-                            "execution_plan": [],
-                            "requires_data": False
-                        }
-                    }
-                )
-            
-            # CRITICAL FIX: Don't serialize the entire dataset to prompt (too large + timestamp issues)
-            # Just send metadata about the dataset
-            context_summary = {}
-            if "dataset" in request.context:
-                dataset = request.context["dataset"]
-                context_summary["dataset_info"] = {
-                    "available": True,
-                    "rows": len(dataset),
-                    "sample": dataset[:2] if len(dataset) > 0 else [],
-                    "columns": list(dataset[0].keys()) if len(dataset) > 0 else []
-                }
-            
-            # Include other context (but not the full dataset)
-            for key, value in request.context.items():
-                if key != "dataset":
-                    context_summary[key] = value
+            # 1. Detect Mode Programmatically
+            detected_mode = self._detect_mode(request)
             
             prompt = f"""{self.get_system_prompt()}
 
-User Query: {request.query}
+CURRENT CONTEXT:
+- Detected Mode: {detected_mode.upper()}
+- Has Dataset: {"Yes" if "dataset_id" in request.context else "No"}
+- User Query: {request.query}
 
-Context: {json.dumps(context_summary)}
-
-Provide the execution plan in JSON format. Make sure to always include at least one agent."""
+Generate the execution plan based on the Detected Mode constraints."""
             
-            # Call Gemini
+            # 2. Call LLM
             response = await self.api_client.generate_content(
                 model_name=self.model,
                 prompt=prompt,
-                temperature=0.3,
+                temperature=0.1,
                 max_tokens=2000
             )
             
-            # Parse response
+            # 3. Parse Response
             content = response.get("text", "{}")
-            
-            logger.info(f"Raw orchestrator response: {content[:500]}")
-            
-            # Extract JSON
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
             elif "```" in content:
                 content = content.split("```")[1].split("```")[0].strip()
             
-            content = content.strip()
-            if content.startswith("json"):
-                content = content[4:].strip()
-            
             try:
                 plan = json.loads(content)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse: {content}")
-                return AgentResponse(
-                    agent_name=self.name,
-                    success=False,
-                    error=f"Invalid JSON response: {str(e)}"
-                )
+            except json.JSONDecodeError:
+                logger.error(f"Failed to parse Orchestrator JSON. Raw: {content}")
+                return AgentResponse(agent_name=self.name, success=False, error="Failed to generate plan")
+
+            # 4. ENFORCE GUARDRAILS
+            agents = plan.get("agents", [])
             
-            if not plan.get("agents"):
-                return AgentResponse(
-                    agent_name=self.name,
-                    success=False,
-                    error="No agents selected"
-                )
-            
+            if detected_mode == "cold_start":
+                forbidden = ["data_harvester", "mcts_optimizer", "order_manager", "notifier", "forecaster"]
+                agents = [a for a in agents if a not in forbidden]
+                
+            elif detected_mode == "ad_hoc":
+                if "notifier" in agents: agents.remove("notifier")
+                
+            # Update the plan with the filtered list
+            plan["agents"] = agents
+            plan["mode"] = detected_mode
+
             return AgentResponse(
                 agent_name=self.name,
                 success=True,
@@ -166,24 +168,17 @@ Provide the execution plan in JSON format. Make sure to always include at least 
             
         except Exception as e:
             logger.error(f"Orchestrator error: {str(e)}")
-            return AgentResponse(
-                agent_name=self.name,
-                success=False,
-                error=str(e)
-            )
-    
+            return AgentResponse(agent_name=self.name, success=False, error=str(e))
+
     async def route_to_agents(
         self,
         execution_plan: Dict[str, Any],
         request: AgentRequest
     ) -> List[AgentResponse]:
-        """
-        Execute the plan by routing to appropriate agents.
-        FIX: Properly resolve dependencies and pass data between agents.
-        """
+        """Execute the agents sequentially based on the plan"""
         responses = []
         
-        # Import agents
+        # Lazy imports
         from app.agents.data_harvester import DataHarvesterAgent
         from app.agents.visualizer import VisualizerAgent
         from app.agents.trend_analyst import TrendAnalystAgent
@@ -191,7 +186,7 @@ Provide the execution plan in JSON format. Make sure to always include at least 
         from app.agents.mcts_optimizer import MCTSOptimizerAgent
         from app.agents.order_manager import OrderManagerAgent
         from app.agents.notifier import NotifierAgent
-        
+
         agent_registry = {
             "data_harvester": DataHarvesterAgent(),
             "visualizer": VisualizerAgent(),
@@ -202,72 +197,70 @@ Provide the execution plan in JSON format. Make sure to always include at least 
             "notifier": NotifierAgent(),
         }
         
-        # Track completed agents
-        completed_agents = set()
-        agent_outputs = {}
+        # --- HELPER: Aggressive Normalization ---
+        def normalize(name: str) -> str:
+            """Converts 'Data Harvester', 'Data_Harvester', 'dataharvester' -> 'dataharvester'"""
+            return name.lower().replace("_", "").replace(" ", "").replace("-", "")
+
+        # Create lookup: {'dataharvester': 'data_harvester', ...}
+        registry_lookup = {normalize(k): k for k in agent_registry.keys()}
         
+        completed_agents = set() # Stores normalized names of completed agents
+
         for step in execution_plan.get("execution_plan", []):
-            agent_name = step["agent"]
-            depends_on = step.get("depends_on", [])
+            raw_name = step["agent"]
+            normalized_name = normalize(raw_name)
             
-            # Check dependencies
-            missing_deps = [dep for dep in depends_on if dep not in completed_agents]
+            # 1. Resolve Agent Key
+            if normalized_name not in registry_lookup:
+                logger.warning(f"Skipping unknown agent: {raw_name}")
+                continue
+            
+            registry_key = registry_lookup[normalized_name] # e.g. "data_harvester"
+            
+            # 2. Guardrails Check
+            allowed_agents = {normalize(a) for a in execution_plan.get("agents", [])}
+            if normalized_name not in allowed_agents:
+                continue
+
+            # 3. Check Dependencies (ROBUST FIX)
+            raw_deps = step.get("depends_on", [])
+            relevant_deps = [d for d in raw_deps if normalize(d) in allowed_agents]
+            missing_deps = [d for d in relevant_deps if normalize(d) not in completed_agents]
+            
             if missing_deps:
-                logger.warning(f"Skipping {agent_name} due to missing dependencies: {missing_deps}")
+                logger.warning(f"Skipping {registry_key} due to missing dependencies: {missing_deps}")
                 continue
+
+            # 4. Execute
+            agent = agent_registry[registry_key]
             
-            if agent_name not in agent_registry:
-                logger.warning(f"Unknown agent: {agent_name}")
-                continue
-            
-            agent = agent_registry[agent_name]
-            
-            # Build context with outputs from dependencies
-            enriched_context = dict(request.context)
-            for dep in depends_on:
-                if dep in agent_outputs:
-                    enriched_context[f"{dep}_output"] = agent_outputs[dep]
-            
-            # CRITICAL FIX: Ensure dataset is passed correctly
-            if "dataset" in request.context and "dataset" not in enriched_context:
-                enriched_context["dataset"] = request.context["dataset"]
-            
-            # Create agent-specific request
-            agent_request = AgentRequest(
+            agent_req = AgentRequest(
                 query=step.get("task", request.query),
-                context=enriched_context,
+                context=request.context,
                 session_id=request.session_id,
                 user_id=request.user_id,
                 parameters=step.get("parameters", {})
             )
             
-            logger.info(f"Executing agent: {agent_name} with context keys: {list(enriched_context.keys())}")
+            response = await agent.execute_with_observability(agent_req)
             
-            # Execute agent
-            try:
-                response = await agent.execute_with_observability(agent_request)
-                responses.append(response)
-                
-                # Track completion and output
-                if response.success:
-                    completed_agents.add(agent_name)
-                    if response.data:
-                        agent_outputs[agent_name] = response.data
-                        # Also update main context
-                        request.context[f"{agent_name}_output"] = response.data
-                else:
-                    logger.error(f"Agent {agent_name} failed: {response.error}")
-                    
-            except Exception as e:
-                logger.error(f"Error executing {agent_name}: {str(e)}")
-                responses.append(AgentResponse(
-                    agent_name=agent_name,
-                    success=False,
-                    error=str(e)
-                ))
-        
+            # --- CRITICAL UI FIX: OVERWRITE NAME ---
+            # Force the response name to match the registry key (snake_case)
+            # e.g., Change "DataHarvester" -> "data_harvester"
+            response.agent_name = registry_key 
+            # ---------------------------------------
+            
+            responses.append(response)
+            
+            if response.success:
+                completed_agents.add(normalized_name)
+                if response.data:
+                    request.context[f"{registry_key}_output"] = response.data
+                    if registry_key == "order_manager":
+                        request.context["order_manager_output"] = response.data
+
         return responses
 
-
-# Singleton instance
+# Singleton
 orchestrator = OrchestratorAgent()

@@ -17,11 +17,7 @@ settings = get_settings()
 
 class ForecasterAgent(BaseAgent):
     """
-    Advanced forecasting using Facebook Prophet with:
-    - Seasonality detection
-    - Indian holiday effects
-    - Confidence intervals
-    - Multiple time-series support
+    Advanced forecasting using Facebook Prophet
     """
     
     def __init__(self):
@@ -59,7 +55,6 @@ class ForecasterAgent(BaseAgent):
             
             # Prepare data for Prophet
             df[date_col] = pd.to_datetime(df[date_col])
-            df = df.sort_values(date_col)
             
             # Generate forecasts for each numeric column
             forecasts_data = {}
@@ -124,10 +119,17 @@ class ForecasterAgent(BaseAgent):
                 date_col = col
                 break
         
-        # Find numeric columns (exclude date)
+        # Find numeric columns (exclude date and IDs)
         numeric_cols = df.select_dtypes(include=[np.number]).columns
-        value_cols = [col for col in numeric_cols if col != date_col]
+        value_cols = [
+            col for col in numeric_cols 
+            if col != date_col and 'id' not in col.lower() and 'price' not in col.lower()
+        ]
         
+        # Fallback if filtered too aggressively
+        if not value_cols:
+             value_cols = [col for col in numeric_cols if col != date_col]
+
         return date_col, value_cols
     
     async def _forecast_column(
@@ -139,10 +141,14 @@ class ForecasterAgent(BaseAgent):
     ) -> Dict:
         """Generate Prophet forecast for a single column"""
         
+        # --- FIX: Aggregate duplicates (Sum values per day) ---
+        # This handles the case where you have multiple products per date
+        grouped_df = df.groupby(date_col)[value_col].sum().reset_index()
+        
         # Prepare Prophet dataframe
         prophet_df = pd.DataFrame({
-            'ds': df[date_col],
-            'y': df[value_col]
+            'ds': grouped_df[date_col],
+            'y': grouped_df[value_col]
         })
         
         # Remove any NaN values
@@ -186,15 +192,20 @@ class ForecasterAgent(BaseAgent):
         }
         
         # Calculate metrics
+        # Use the AGGREGATED actuals vs predicted
         historical_actual = prophet_df['y'].values
         historical_predicted = forecast.head(len(prophet_df))['yhat'].values
         
-        mape = np.mean(np.abs((historical_actual - historical_predicted) / historical_actual)) * 100
+        # Avoid division by zero
+        with np.errstate(divide='ignore', invalid='ignore'):
+            mape = np.mean(np.abs((historical_actual - historical_predicted) / historical_actual)) * 100
+            if np.isnan(mape) or np.isinf(mape):
+                mape = 0.0
         
         return {
             "predictions": predictions,
             "seasonality": seasonality,
-            "confidence_score": float(1 - (mape / 100)),
+            "confidence_score": float(1 - (mape / 100)) if mape < 100 else 0.0,
             "metrics": {
                 "mape": float(mape),
                 "trend": "increasing" if predictions[-1]["value"] > predictions[0]["value"] else "decreasing",
@@ -252,7 +263,11 @@ class ForecasterAgent(BaseAgent):
         for col, data in forecasts_data.items():
             first_pred = data["predictions"][0]["value"]
             last_pred = data["predictions"][-1]["value"]
-            change = ((last_pred - first_pred) / first_pred) * 100
+            # Avoid division by zero
+            if first_pred != 0:
+                change = ((last_pred - first_pred) / first_pred) * 100
+            else:
+                change = 0.0
             
             summary["forecasted_metrics"][col] = {
                 "start_value": round(first_pred, 2),

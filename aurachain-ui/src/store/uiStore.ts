@@ -21,13 +21,13 @@ interface UIState {
   userId: string;
   messages: Message[];
   
-  // --- Agentic State (The "Live" feel) ---
-  isThinking: boolean; // Triggers the "Brain" animation
-  processingStep: string | null; // e.g. "Data Harvester is working..."
+  // --- Agentic State ---
+  isThinking: boolean; 
+  processingStep: string | null;
   
   // --- Context ---
   activeDataset: DatasetContext | null;
-  selectedAgentId: string | null; // Controls what opens in Right Panel
+  selectedAgentId: string | null; 
   
   // --- Orchestration Data ---
   currentPlan: OrchestrationPlan | null;
@@ -41,7 +41,6 @@ interface UIState {
   setSelectedAgent: (id: string | null) => void;
   toggleTheme: () => void;
   
-  // --- Core Functional Actions ---
   initializeSession: () => Promise<void>;
   uploadDataset: (file: File) => Promise<void>;
   sendMessage: (text: string) => Promise<void>;
@@ -56,7 +55,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   isDarkMode: false,
   
   sessionId: null,
-  userId: 'demo_user_01', // Hardcoded for now
+  userId: 'demo_user_01', 
   messages: [],
   
   isThinking: false,
@@ -72,8 +71,6 @@ export const useUIStore = create<UIState>((set, get) => ({
   toggleRightPanel: () => set((state) => ({ isRightPanelOpen: !state.isRightPanelOpen })),
   setRightPanelOpen: (isOpen) => set({ isRightPanelOpen: isOpen }),
   setRightPanelWidth: (width) => set({ rightPanelWidth: width }),
-  
-  // When a user clicks an agent card, open the panel and show details
   setSelectedAgent: (id) => set({ selectedAgentId: id, isRightPanelOpen: !!id }),
   
   toggleTheme: () => set((state) => {
@@ -85,26 +82,21 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   // --- Functional Actions ---
 
-  // 1. Initialize Session on App Load
   initializeSession: async () => {
     const { userId } = get();
     try {
       const res = await api.createSession(userId);
-      // Backend returns request_id, we generate a session ID if backend doesn't provide one explicitly yet
       const newSessionId = res.session_id || `sess_${Date.now()}`;
       set({ sessionId: newSessionId });
-      console.log("Session Initialized:", newSessionId);
     } catch (e) {
       console.error("Session Init Failed", e);
-      set({ sessionId: `offline_sess_${Date.now()}` }); // Fallback
+      set({ sessionId: `offline_sess_${Date.now()}` }); 
     }
   },
 
-  // 2. Upload Data
   uploadDataset: async (file: File) => {
     try {
       const res = await api.uploadDataset(file);
-      
       set({ 
         activeDataset: {
           dataset_id: res.dataset_id,
@@ -114,15 +106,13 @@ export const useUIStore = create<UIState>((set, get) => ({
         }
       });
 
-      // Add a system message confirming upload
       const sysMsg: Message = {
         id: Date.now().toString(),
         sender: 'ai',
-        text: `dataset_uploaded`, // Special flag we can catch in MessageBubble if we want custom UI
+        text: `dataset_uploaded`, 
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        type: 'text', // Standard text for now
+        type: 'text', 
         metadata: {
-            // We use the text field for the UI, but store data here
             displayText: `✅ Ingested **${res.filename}** (${res.shape[0]} rows). Ready for analysis.` 
         }
       };
@@ -131,20 +121,14 @@ export const useUIStore = create<UIState>((set, get) => ({
 
     } catch (e) {
       console.error("Upload failed", e);
-      // Error handling UI could go here
     }
   },
 
-  // 3. THE MAIN AGENT LOOP
   sendMessage: async (text: string) => {
     const { sessionId, userId, activeDataset } = get();
-    
-    // Ensure session
     if (!sessionId) await get().initializeSession();
-
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    // A. Add User Message
     const userMsg: Message = {
       id: Date.now().toString(),
       sender: 'user',
@@ -155,19 +139,15 @@ export const useUIStore = create<UIState>((set, get) => ({
 
     set(state => ({ 
       messages: [...state.messages, userMsg],
-      isThinking: true, // Start the "Brain" animation
+      isThinking: true, 
       processingStep: "Orchestrator is analyzing request..."
     }));
 
     try {
-      // B. Call Backend
-      // We inject dataset_id into context if it exists
       const context = activeDataset ? { dataset_id: activeDataset.dataset_id } : {};
       const response = await api.sendQuery(text, sessionId!, userId, context);
 
-      // --- STAGE 1: Reasoning & Plan ---
-      
-      // 1. Add "Thinking" Reasoning as a message
+      // 1. Add "Thinking" Reasoning
       const reasoningMsg: Message = {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
@@ -177,13 +157,13 @@ export const useUIStore = create<UIState>((set, get) => ({
       };
       set(state => ({ messages: [...state.messages, reasoningMsg] }));
 
-      // 2. Add the "Plan Artifact" (The list of agents)
+      // 2. Add the "Plan Artifact"
       const planMsg: Message = {
         id: (Date.now() + 2).toString(),
         sender: 'ai',
-        text: 'Agent Execution Strategy', // Title
+        text: 'Agent Execution Strategy', 
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        type: 'analysis', // This triggers the Workflow Card
+        type: 'analysis', 
         status: 'processing',
         metadata: {
           progress: 0,
@@ -194,76 +174,62 @@ export const useUIStore = create<UIState>((set, get) => ({
       set(state => ({ 
         messages: [...state.messages, planMsg],
         currentPlan: response.orchestration_plan,
-        isRightPanelOpen: true, // Auto-open sidebar as requested
-        selectedAgentId: null // Show the workflow view initially
+        isRightPanelOpen: true, 
+        selectedAgentId: null 
       }));
 
-      // --- STAGE 2: Simulate Agent Execution Stream ---
-      
-      // Since backend sends all data at once (for now), we loop with delays 
-      // to create the "Live Agent" experience.
-      
+      // --- STREAMING SIMULATION ---
       const agents = response.agent_responses;
       const totalAgents = agents.length;
       let completedCount = 0;
 
       for (const agentRes of agents) {
-        // Update Status: Agent Processing
         set(state => ({
           processingStep: `Activating ${agentRes.agent}...`,
           agentStatuses: new Map(state.agentStatuses).set(agentRes.agent, 'processing')
         }));
 
-        // 1. Simulate "Working" time (800ms)
         await new Promise(r => setTimeout(r, 800));
 
-        // 2. Add the Agent Result Artifact to Chat
+        // 3. Add the Agent Result Artifact
         const resultMsg: Message = {
           id: `${Date.now()}_${agentRes.agent}`,
           sender: 'ai',
-          text: agentRes.agent, // Used as title
+          text: agentRes.agent, 
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          type: 'analysis', // Re-using analysis type to show a card
+          type: 'analysis', 
           status: agentRes.success ? 'completed' : 'failed',
           metadata: {
-            data: agentRes.data, // The raw JSON (chart, table, etc)
-            summary: "Click to view detailed report"
+            data: agentRes.data, 
+            summary: "Click to view detailed report",
+            agent: agentRes.agent, // <--- 🚨 THIS WAS MISSING 🚨
+            success: agentRes.success,
+            error: agentRes.error
           }
         };
 
-        // 3. Update State:
-        //    - Add message to chat (resultMsg)
-        //    - Update Sidebar status to Completed
-        //    - Auto-navigate Right Sidebar to this Agent's specific view
-        //    - Update the main Plan Card progress
         set(state => ({
           agentStatuses: new Map(state.agentStatuses).set(agentRes.agent, agentRes.success ? 'completed' : 'failed'),
-          selectedAgentId: agentRes.agent, // <--- This triggers the "Right Sidebar Loop" you asked for
+          selectedAgentId: agentRes.agent,
           
           messages: [
-            // A. Map over existing messages to update progress on the Plan Card
             ...state.messages.map(m => 
                 m.id === planMsg.id 
                   ? { ...m, metadata: { ...m.metadata, progress: Math.round(((completedCount + 1) / totalAgents) * 100) } } 
                   : m
             ),
-            // B. Append the new result message at the end
             resultMsg
           ]
         }));
 
         completedCount++;
-        // Pause briefly so user can see the "Result" before next one starts
         await new Promise(r => setTimeout(r, 1200));
       }
 
-      // --- STAGE 3: Finalize ---
-      
       set(state => ({
         isThinking: false,
         processingStep: null,
-        selectedAgentId: null, // Return sidebar to workflow view (optional, or keep last agent open)
-        // Mark the plan card as 100% complete
+        selectedAgentId: null, 
         messages: state.messages.map(m => 
             m.id === planMsg.id 
               ? { ...m, status: 'completed', metadata: { ...m.metadata, progress: 100 } } 

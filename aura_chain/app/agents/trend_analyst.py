@@ -7,7 +7,7 @@ from scipy import stats
 from pytrends.request import TrendReq
 import time
 import json
-from typing import Dict, List
+from typing import Dict, List, Any
 from loguru import logger
 
 settings = get_settings()
@@ -88,6 +88,15 @@ class TrendAnalystAgent(BaseAgent):
         
         trends = {}
         
+        # --- HELPER: Sanitize NaN/Inf for JSON ---
+        def safe_float(val: Any) -> float:
+            try:
+                if pd.isna(val) or np.isinf(val):
+                    return 0.0
+                return float(val)
+            except:
+                return 0.0
+
         for col in numeric_cols:
             series = df[col].dropna()
             
@@ -96,7 +105,11 @@ class TrendAnalystAgent(BaseAgent):
             
             # Linear regression for trend
             x = np.arange(len(series))
-            slope, intercept, r_value, p_value, std_err = stats.linregress(x, series)
+            # Catch warnings for constant data
+            try:
+                slope, intercept, r_value, p_value, std_err = stats.linregress(x, series)
+            except Exception:
+                slope, intercept, r_value, p_value, std_err = 0, 0, 0, 1, 0
             
             # Calculate additional metrics
             mean_val = series.mean()
@@ -105,7 +118,11 @@ class TrendAnalystAgent(BaseAgent):
             
             # Detect anomalies (values > 2 std from mean)
             z_scores = np.abs(stats.zscore(series))
-            anomalies = (z_scores > 2).sum()
+            # Handle NaN z-scores (constant data)
+            if np.isnan(z_scores).all():
+                anomalies = 0
+            else:
+                anomalies = (z_scores > 2).sum()
             
             # Growth rate (first to last)
             if len(series) > 1 and series.iloc[0] != 0:
@@ -115,17 +132,17 @@ class TrendAnalystAgent(BaseAgent):
             
             trends[col] = {
                 "trend_direction": "increasing" if slope > 0 else "decreasing",
-                "slope": float(slope),
-                "r_squared": float(r_value ** 2),
-                "p_value": float(p_value),
+                "slope": safe_float(slope),
+                "r_squared": safe_float(r_value ** 2),
+                "p_value": safe_float(p_value),
                 "significance": "significant" if p_value < 0.05 else "not significant",
                 "statistics": {
-                    "mean": float(mean_val),
-                    "std": float(std_val),
-                    "coefficient_of_variation": float(cv),
-                    "min": float(series.min()),
-                    "max": float(series.max()),
-                    "growth_rate_pct": float(growth_rate)
+                    "mean": safe_float(mean_val),
+                    "std": safe_float(std_val),
+                    "coefficient_of_variation": safe_float(cv),
+                    "min": safe_float(series.min()),
+                    "max": safe_float(series.max()),
+                    "growth_rate_pct": safe_float(growth_rate)
                 },
                 "anomalies_detected": int(anomalies),
                 "volatility": "high" if cv > 30 else "medium" if cv > 15 else "low"

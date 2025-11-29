@@ -1,9 +1,12 @@
+# app/agents/base_agent.py
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel
 from datetime import datetime
 from app.core.observability import observability
 from loguru import logger
+import math
+import numpy as np
 
 class AgentResponse(BaseModel):
     """Standard response format for all agents"""
@@ -54,6 +57,13 @@ class BaseAgent(ABC):
                 request
             )
             
+            # --- CRITICAL FIX: Sanitize Data for JSON ---
+            if response.data:
+                response.data = self._sanitize_for_json(response.data)
+            if response.metadata:
+                response.metadata = self._sanitize_for_json(response.metadata)
+            # --------------------------------------------
+            
             return response
             
         except Exception as e:
@@ -64,6 +74,22 @@ class BaseAgent(ABC):
                 error=str(e)
             )
     
+    def _sanitize_for_json(self, obj: Any) -> Any:
+        """Recursively remove NaN, Infinity, and numpy types for JSON safety"""
+        if isinstance(obj, dict):
+            return {k: self._sanitize_for_json(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._sanitize_for_json(v) for v in obj]
+        elif isinstance(obj, (float, np.floating)):
+            if math.isnan(obj) or math.isinf(obj):
+                return 0.0  # Safe fallback for UI
+            return float(obj)
+        elif isinstance(obj, (np.integer, np.int64, np.int32)):
+            return int(obj)
+        elif isinstance(obj, np.ndarray):
+            return self._sanitize_for_json(obj.tolist())
+        return obj
+
     def add_tool(self, tool: Dict[str, Any]):
         """Register a tool with the agent"""
         self.tools.append(tool)
